@@ -44,12 +44,15 @@ st.title("🖼️ Image Processor")
 
 # Check URL parameters
 params = st.experimental_get_query_params()
+st.write("Debug - Query Parameters:", params)
+st.write("Debug - Current URL Path:", st.experimental_get_query_params())
 
 # Handle OAuth flow
 if "code" in params:
     try:
         # Get the authorization code
         code = params["code"][0]
+        st.write("Debug - Authorization Code:", code)
         
         # Create a new handler and get the token
         oauth2_user_handler = init_oauth_handler()
