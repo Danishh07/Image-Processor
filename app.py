@@ -2,9 +2,13 @@ import streamlit as st
 from PIL import Image
 import io
 import tweepy
+import os
 
 # Configure page
 st.set_page_config(page_title="Image Processor", page_icon="🖼️", layout="wide")
+
+# Force HTTPS for OAuth
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '0'
 
 # Debug information about secrets
 st.write("Available secrets:", list(st.secrets.keys()) if hasattr(st.secrets, "keys") else "No secrets available")
@@ -14,15 +18,19 @@ CLIENT_ID = "eW1BcGF0dEJTeHAwQnM3dFlGUEU6MTpjaQ"
 CLIENT_SECRET = "o5m97vDzMiAjqCqByvChBYvKNM3h4wBl5lanfdnIdyhZBhc6Lm"
 
 # Initialize Twitter client
-oauth2_user_handler = tweepy.OAuth2UserHandler(
-    client_id=CLIENT_ID,
-    client_secret=CLIENT_SECRET,
-    redirect_uri="https://image-proceapp.streamlit.app",
-    scope=["tweet.read", "tweet.write", "users.read", "offline.access"],
-)
+try:
+    oauth2_user_handler = tweepy.OAuth2UserHandler(
+        client_id=CLIENT_ID,
+        client_secret=CLIENT_SECRET,
+        redirect_uri="https://image-proceapp.streamlit.app/",  # Added trailing slash
+        scope=["tweet.read", "tweet.write", "users.read", "offline.access"],
+    )
 
-# Get the authorization URL
-auth_url = oauth2_user_handler.get_authorization_url()
+    # Get the authorization URL
+    auth_url = oauth2_user_handler.get_authorization_url()
+except Exception as e:
+    st.error(f"Error initializing OAuth: {str(e)}")
+    auth_url = None
 
 # Predefined image sizes
 IMAGE_SIZES = [
@@ -63,7 +71,8 @@ def post_to_twitter(images):
     try:
         if 'oauth_token' not in st.session_state:
             st.error("Please authenticate with Twitter first")
-            st.markdown(f"[Click here to authenticate with Twitter]({auth_url})")
+            if auth_url:
+                st.markdown(f"[Click here to authenticate with Twitter]({auth_url})")
             return False
 
         # Get the client
@@ -129,13 +138,19 @@ if "code" in st.experimental_get_query_params():
         access_token = oauth2_user_handler.fetch_token(code)
         st.session_state.oauth_token = access_token
         st.success("Successfully authenticated with Twitter!")
+        
+        # Clear the URL parameters
+        st.experimental_set_query_params()
     except Exception as e:
         st.error(f"Error authenticating: {str(e)}")
+        if "insecure_transport" in str(e).lower():
+            st.error("This app requires HTTPS. Please make sure you're using the HTTPS URL.")
 
 # Show authentication status
 if 'oauth_token' not in st.session_state:
     st.warning("Please authenticate with Twitter first")
-    st.markdown(f"[Click here to authenticate with Twitter]({auth_url})")
+    if auth_url:
+        st.markdown(f"[Click here to authenticate with Twitter]({auth_url})")
 else:
     st.success("Authenticated with Twitter")
 
