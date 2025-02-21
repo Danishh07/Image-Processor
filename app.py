@@ -9,6 +9,8 @@ import os
 import time
 import uuid
 import urllib.parse
+import requests
+import base64
 
 # Configure page
 st.set_page_config(page_title="Image Processor", page_icon="🖼️", layout="wide")
@@ -42,6 +44,36 @@ except Exception:
 # Constants
 REDIRECT_URI = "https://image-proceapp.streamlit.app"
 
+def exchange_code_for_token(code):
+    """Exchange authorization code for access token"""
+    token_url = "https://api.twitter.com/2/oauth2/token"
+    
+    # Create the authorization header
+    auth_header = base64.b64encode(f"{CLIENT_ID}:{CLIENT_SECRET}".encode('utf-8')).decode('utf-8')
+    
+    headers = {
+        "Authorization": f"Basic {auth_header}",
+        "Content-Type": "application/x-www-form-urlencoded"
+    }
+    
+    data = {
+        "code": code,
+        "grant_type": "authorization_code",
+        "redirect_uri": REDIRECT_URI,
+        "code_verifier": "challenge"
+    }
+    
+    st.write("Debug - Token request data:", data)
+    
+    response = requests.post(token_url, headers=headers, data=data)
+    st.write("Debug - Token response status:", response.status_code)
+    st.write("Debug - Token response:", response.text)
+    
+    if response.status_code == 200:
+        return response.json()
+    else:
+        raise Exception(f"Token exchange failed: {response.text}")
+
 def init_oauth_handler():
     """Initialize the OAuth handler"""
     oauth2_user_handler = tweepy.OAuth2UserHandler(
@@ -71,38 +103,26 @@ if "code" in params:
         code = params["code"][0]
         st.write("Debug - Code:", code)
         
-        # Create a new handler and get the token
-        oauth2_user_handler = init_oauth_handler()
-        
+        # Exchange code for token
         try:
-            # First try with the code as is
-            access_token = oauth2_user_handler.fetch_token(code)
-        except Exception as e1:
-            st.write("Debug - First attempt failed:", str(e1))
-            try:
-                # Try with URL-decoded code
-                decoded_code = urllib.parse.unquote(code)
-                access_token = oauth2_user_handler.fetch_token(decoded_code)
-            except Exception as e2:
-                st.write("Debug - Second attempt failed:", str(e2))
-                raise e2
-        
-        # Store the token
-        st.session_state.oauth_token = access_token
-        st.success("Successfully authenticated with Twitter!")
-        
-        # Clear URL parameters
-        st.experimental_set_query_params()
-        st.rerun()
+            access_token_data = exchange_code_for_token(code)
+            st.write("Debug - Token data received:", access_token_data)
+            
+            # Store the token
+            st.session_state.oauth_token = access_token_data["access_token"]
+            st.success("Successfully authenticated with Twitter!")
+            
+            # Clear URL parameters
+            st.experimental_set_query_params()
+            st.rerun()
+        except Exception as e:
+            st.error(f"Error exchanging code for token: {str(e)}")
+            st.write("Debug - Exchange error:", str(e))
+            
     except Exception as e:
-        st.error(f"Error authenticating: {str(e)}")
+        st.error(f"Error in OAuth flow: {str(e)}")
         if "insecure_transport" in str(e).lower():
             st.error("This app requires HTTPS. Please make sure you're using the HTTPS URL.")
-            
-        # Show detailed error for debugging
-        st.write("Debug - Full error:", str(e))
-        if hasattr(e, 'response'):
-            st.write("Debug - Response:", e.response.text if hasattr(e.response, 'text') else str(e.response))
 
 # Show authentication status and button
 if 'oauth_token' not in st.session_state:
