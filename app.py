@@ -34,13 +34,12 @@ try:
         redirect_uri="https://image-proceapp.streamlit.app/",
         scope=["tweet.read", "tweet.write", "users.read", "offline.access"],
     )
-
-    # Generate and store state
-    if 'oauth_state' not in st.session_state:
-        st.session_state.oauth_state = f"st_state_{int(time.time())}"
     
-    # Get the authorization URL with state
-    auth_url = oauth2_user_handler.get_authorization_url(state=st.session_state.oauth_state)
+    # Get the authorization URL
+    auth_url = oauth2_user_handler.get_authorization_url()
+    
+    # Store the state from oauth2_user_handler
+    st.session_state.oauth_state = oauth2_user_handler.state
     st.session_state.auth_url = auth_url
 except Exception as e:
     st.error(f"Error initializing OAuth: {str(e)}")
