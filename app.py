@@ -11,20 +11,15 @@ import uuid
 import urllib.parse
 import requests
 import base64
+import hashlib
+import random
+import string
 
 # Configure page
 st.set_page_config(page_title="Image Processor", page_icon="🖼️", layout="wide")
 
 # Force HTTPS for OAuth
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '0'
-
-# Debug information about the environment
-st.write("Debug - Environment:")
-st.write({
-    "HTTPS": os.environ.get('HTTPS', 'Not set'),
-    "SERVER_PROTOCOL": os.environ.get('SERVER_PROTOCOL', 'Not set'),
-    "HTTP_X_FORWARDED_PROTO": os.environ.get('HTTP_X_FORWARDED_PROTO', 'Not set')
-})
 
 # Twitter API credentials - try to get from secrets, otherwise use environment variables
 try:
@@ -44,6 +39,26 @@ except Exception:
 # Constants
 REDIRECT_URI = "https://image-proceapp.streamlit.app"
 
+# Function to generate a random code verifier
+def generate_code_verifier(length=128):
+    return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
+
+# Function to create a code challenge from the verifier
+def create_code_challenge(code_verifier):
+    # Generate SHA-256 hash of the code verifier
+    code_verifier_bytes = code_verifier.encode('utf-8')
+    code_challenge = hashlib.sha256(code_verifier_bytes).digest()
+    # Base64 URL-encode the hash
+    code_challenge_b64 = base64.urlsafe_b64encode(code_challenge).decode('utf-8')
+    return code_challenge_b64.rstrip('=')  # Remove padding
+
+# Initialize session state for code verifier
+if 'code_verifier' not in st.session_state:
+    st.session_state.code_verifier = generate_code_verifier()
+
+# Create code challenge
+code_challenge = create_code_challenge(st.session_state.code_verifier)
+
 def exchange_code_for_token(code):
     """Exchange authorization code for access token"""
     token_url = "https://api.twitter.com/2/oauth2/token"
@@ -60,14 +75,10 @@ def exchange_code_for_token(code):
         "code": code,
         "grant_type": "authorization_code",
         "redirect_uri": REDIRECT_URI,
-        "code_verifier": "challenge"
+        "code_verifier": st.session_state.code_verifier
     }
     
-    st.write("Debug - Token request data:", data)
-    
     response = requests.post(token_url, headers=headers, data=data)
-    st.write("Debug - Token response status:", response.status_code)
-    st.write("Debug - Token response:", response.text)
     
     if response.status_code == 200:
         return response.json()
@@ -91,22 +102,16 @@ st.title("🖼️ Image Processor")
 if 'oauth_state' not in st.session_state:
     st.session_state.oauth_state = str(uuid.uuid4())
 
-# Check URL parameters
-params = st.experimental_get_query_params()
-st.write("Debug - Query Parameters:", params)
-st.write("Debug - Current State:", st.session_state.oauth_state)
-
 # Handle OAuth flow
+params = st.experimental_get_query_params()
 if "code" in params:
     try:
         # Get the authorization code
         code = params["code"][0]
-        st.write("Debug - Code:", code)
         
         # Exchange code for token
         try:
             access_token_data = exchange_code_for_token(code)
-            st.write("Debug - Token data received:", access_token_data)
             
             # Store the token
             st.session_state.oauth_token = access_token_data["access_token"]
@@ -117,7 +122,6 @@ if "code" in params:
             st.rerun()
         except Exception as e:
             st.error(f"Error exchanging code for token: {str(e)}")
-            st.write("Debug - Exchange error:", str(e))
             
     except Exception as e:
         st.error(f"Error in OAuth flow: {str(e)}")
@@ -132,8 +136,7 @@ if 'oauth_token' not in st.session_state:
     if st.button("Authenticate with Twitter"):
         try:
             oauth2_user_handler = init_oauth_handler()
-            auth_url = oauth2_user_handler.get_authorization_url()
-            st.write("Debug - Generated Auth URL:", auth_url)
+            auth_url = oauth2_user_handler.get_authorization_url(code_challenge=code_challenge)
             st.markdown(f"[Click here to authenticate with Twitter]({auth_url})")
         except Exception as e:
             st.error(f"Error generating authentication URL: {str(e)}")
