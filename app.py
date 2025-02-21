@@ -73,9 +73,21 @@ def post_to_twitter(images):
         return False
 
     try:
-        # Authenticate with Twitter
-        auth = tweepy.OAuthHandler(TWITTER_API_KEY, TWITTER_API_SECRET)
-        auth.set_access_token(TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET)
+        # Initialize Twitter API v2 client
+        client = tweepy.Client(
+            consumer_key=TWITTER_API_KEY,
+            consumer_secret=TWITTER_API_SECRET,
+            access_token=TWITTER_ACCESS_TOKEN,
+            access_token_secret=TWITTER_ACCESS_SECRET
+        )
+        
+        # Initialize API v1.1 for media upload
+        auth = tweepy.OAuth1UserHandler(
+            TWITTER_API_KEY,
+            TWITTER_API_SECRET,
+            TWITTER_ACCESS_TOKEN,
+            TWITTER_ACCESS_SECRET
+        )
         api = tweepy.API(auth)
         
         # Upload images
@@ -86,18 +98,37 @@ def post_to_twitter(images):
             img.save(img_byte_arr, format='PNG')
             img_byte_arr = img_byte_arr.getvalue()
             
-            # Upload to Twitter
-            media = api.media_upload(filename='image.png', file=io.BytesIO(img_byte_arr))
-            media_ids.append(media.media_id)
+            try:
+                # Upload to Twitter
+                media = api.media_upload(filename='image.png', file=io.BytesIO(img_byte_arr))
+                media_ids.append(media.media_id)
+            except Exception as e:
+                st.error(f"Error uploading image: {str(e)}")
+                return False
         
-        # Post tweet with all images
-        api.update_status(
-            status='Check out these automatically resized images! #ImageProcessor',
-            media_ids=media_ids
-        )
-        return True
+        try:
+            # Post tweet with all images using v2 API
+            response = client.create_tweet(
+                text='Check out these automatically resized images! #ImageProcessor',
+                media_ids=media_ids
+            )
+            st.write("Tweet posted successfully! Tweet ID:", response.data['id'])
+            return True
+        except Exception as e:
+            st.error(f"Error creating tweet: {str(e)}")
+            return False
+            
     except Exception as e:
-        st.error(f"Error posting to Twitter: {str(e)}")
+        st.error(f"""
+        Error posting to Twitter: {str(e)}
+        
+        Common issues:
+        1. API keys may be incorrect
+        2. Twitter account may not be approved for API access
+        3. Rate limits may have been exceeded
+        
+        Please verify your Twitter API credentials and permissions.
+        """)
         return False
 
 # Main UI
@@ -136,6 +167,6 @@ if uploaded_file is not None:
                 if post_to_twitter(processed_images):
                     st.success("Successfully posted to Twitter!")
                 else:
-                    st.error("Failed to post to Twitter. Please check your credentials.")
+                    st.error("Failed to post to Twitter. Please check the error messages above.")
         else:
             st.error("Twitter API is not configured. Please check the secrets configuration.")
