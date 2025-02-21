@@ -8,6 +8,7 @@ import tweepy
 import os
 import time
 import uuid
+import urllib.parse
 
 # Configure page
 st.set_page_config(page_title="Image Processor", page_icon="🖼️", layout="wide")
@@ -39,49 +40,60 @@ except Exception:
         CLIENT_SECRET = "o5m97vDzMiAjqCqByvChBYvKNM3h4wBl5lanfdnIdyhZBhc6Lm"
 
 # Constants
-REDIRECT_URI = "https://image-proceapp.streamlit.app"  # Removed trailing slash
+REDIRECT_URI = "https://image-proceapp.streamlit.app"
 
 def init_oauth_handler():
     """Initialize the OAuth handler"""
-    return tweepy.OAuth2UserHandler(
+    oauth2_user_handler = tweepy.OAuth2UserHandler(
         client_id=CLIENT_ID,
         client_secret=CLIENT_SECRET,
         redirect_uri=REDIRECT_URI,
         scope=["tweet.read", "tweet.write", "users.read", "offline.access"],
     )
+    return oauth2_user_handler
 
 # Main UI
 st.title("🖼️ Image Processor")
 
+# Initialize session state
+if 'oauth_state' not in st.session_state:
+    st.session_state.oauth_state = str(uuid.uuid4())
+
 # Check URL parameters
 params = st.experimental_get_query_params()
 st.write("Debug - Query Parameters:", params)
-st.write("Debug - Full URL:", st.experimental_get_query_params())
+st.write("Debug - Current State:", st.session_state.oauth_state)
 
 # Handle OAuth flow
-if "code" in params:
-    try:
-        # Get the authorization code
-        code = params["code"][0]
-        st.write("Debug - Authorization Code:", code)
-        
-        # Create a new handler and get the token
-        oauth2_user_handler = init_oauth_handler()
-        access_token = oauth2_user_handler.fetch_token(code)
-        
-        # Store the token
-        st.session_state.oauth_token = access_token
-        st.success("Successfully authenticated with Twitter!")
-        
-        # Clear URL parameters
-        st.experimental_set_query_params()
-    except Exception as e:
-        st.error(f"Error authenticating: {str(e)}")
-        if "insecure_transport" in str(e).lower():
-            st.error("This app requires HTTPS. Please make sure you're using the HTTPS URL.")
-        # Clear any existing token
-        if 'oauth_token' in st.session_state:
-            del st.session_state.oauth_token
+if "state" in params and "code" in params:
+    received_state = params["state"][0]
+    code = params["code"][0]
+    
+    st.write("Debug - Received State:", received_state)
+    st.write("Debug - Expected State:", st.session_state.oauth_state)
+    st.write("Debug - Code:", code)
+    
+    if received_state == st.session_state.oauth_state:
+        try:
+            # Create a new handler and get the token
+            oauth2_user_handler = init_oauth_handler()
+            access_token = oauth2_user_handler.fetch_token(code)
+            
+            # Store the token
+            st.session_state.oauth_token = access_token
+            st.success("Successfully authenticated with Twitter!")
+            
+            # Clear URL parameters and generate new state
+            st.experimental_set_query_params()
+            st.session_state.oauth_state = str(uuid.uuid4())
+            st.rerun()
+        except Exception as e:
+            st.error(f"Error authenticating: {str(e)}")
+            if "insecure_transport" in str(e).lower():
+                st.error("This app requires HTTPS. Please make sure you're using the HTTPS URL.")
+    else:
+        st.error("State mismatch. Please try authenticating again.")
+        st.session_state.oauth_state = str(uuid.uuid4())
 
 # Show authentication status and button
 if 'oauth_token' not in st.session_state:
@@ -91,7 +103,7 @@ if 'oauth_token' not in st.session_state:
     if st.button("Authenticate with Twitter"):
         try:
             oauth2_user_handler = init_oauth_handler()
-            auth_url = oauth2_user_handler.get_authorization_url()
+            auth_url = oauth2_user_handler.get_authorization_url(state=st.session_state.oauth_state)
             st.write("Debug - Generated Auth URL:", auth_url)
             st.markdown(f"[Click here to authenticate with Twitter]({auth_url})")
         except Exception as e:
