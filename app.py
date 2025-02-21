@@ -15,6 +15,14 @@ st.set_page_config(page_title="Image Processor", page_icon="🖼️", layout="wi
 # Force HTTPS for OAuth
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '0'
 
+# Debug information about the environment
+st.write("Debug - Environment:")
+st.write({
+    "HTTPS": os.environ.get('HTTPS', 'Not set'),
+    "SERVER_PROTOCOL": os.environ.get('SERVER_PROTOCOL', 'Not set'),
+    "HTTP_X_FORWARDED_PROTO": os.environ.get('HTTP_X_FORWARDED_PROTO', 'Not set')
+})
+
 # Twitter API credentials - try to get from secrets, otherwise use environment variables
 try:
     # Try to get from nested secrets first
@@ -30,12 +38,15 @@ except Exception:
         CLIENT_ID = "eW1BcGF0dEJTeHAwQnM3dFlGUEU6MTpjaQ"
         CLIENT_SECRET = "o5m97vDzMiAjqCqByvChBYvKNM3h4wBl5lanfdnIdyhZBhc6Lm"
 
+# Constants
+REDIRECT_URI = "https://image-proceapp.streamlit.app"  # Removed trailing slash
+
 def init_oauth_handler():
     """Initialize the OAuth handler"""
     return tweepy.OAuth2UserHandler(
         client_id=CLIENT_ID,
         client_secret=CLIENT_SECRET,
-        redirect_uri="https://image-proceapp.streamlit.app/",
+        redirect_uri=REDIRECT_URI,
         scope=["tweet.read", "tweet.write", "users.read", "offline.access"],
     )
 
@@ -45,7 +56,7 @@ st.title("🖼️ Image Processor")
 # Check URL parameters
 params = st.experimental_get_query_params()
 st.write("Debug - Query Parameters:", params)
-st.write("Debug - Current URL Path:", st.experimental_get_query_params())
+st.write("Debug - Full URL:", st.experimental_get_query_params())
 
 # Handle OAuth flow
 if "code" in params:
@@ -81,6 +92,7 @@ if 'oauth_token' not in st.session_state:
         try:
             oauth2_user_handler = init_oauth_handler()
             auth_url = oauth2_user_handler.get_authorization_url()
+            st.write("Debug - Generated Auth URL:", auth_url)
             st.markdown(f"[Click here to authenticate with Twitter]({auth_url})")
         except Exception as e:
             st.error(f"Error generating authentication URL: {str(e)}")
