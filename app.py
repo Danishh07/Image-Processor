@@ -1,275 +1,63 @@
-import warnings
-warnings.filterwarnings("ignore", category=SyntaxWarning)
-
 import streamlit as st
 from PIL import Image
-import io
 import tweepy
 import os
-import time
-import uuid
-import urllib.parse
-import requests
-import base64
-import hashlib
-import random
-import string
+from io import BytesIO
+from dotenv import load_dotenv
 
-# Configure page
-st.set_page_config(page_title="Image Processor", page_icon="🖼️", layout="wide")
+# Load environment variables
+load_dotenv()
 
-# Force HTTPS for OAuth
-os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '0'
+# Twitter API credentials
+API_KEY = os.getenv("TWITTER_API_KEY")
+API_SECRET = os.getenv("TWITTER_API_SECRET")
+ACCESS_TOKEN = os.getenv("TWITTER_ACCESS_TOKEN")
+ACCESS_SECRET = os.getenv("TWITTER_ACCESS_SECRET")
 
-# Twitter API credentials - try to get from secrets, otherwise use environment variables
-try:
-    # Try to get from nested secrets first
-    CLIENT_ID = st.secrets.secrets.TWITTER_CLIENT_ID
-    CLIENT_SECRET = st.secrets.secrets.TWITTER_CLIENT_SECRET
-except Exception:
-    try:
-        # Try to get from top-level secrets
-        CLIENT_ID = st.secrets["TWITTER_CLIENT_ID"]
-        CLIENT_SECRET = st.secrets["TWITTER_CLIENT_SECRET"]
-    except Exception:
-        # Use hardcoded values as fallback
-        CLIENT_ID = "eW1BcGF0dEJTeHAwQnM3dFlGUEU6MTpjaQ"
-        CLIENT_SECRET = "o5m97vDzMiAjqCqByvChBYvKNM3h4wBl5lanfdnIdyhZBhc6Lm"
+# Tweepy authentication
+auth = tweepy.OAuth1UserHandler(API_KEY, API_SECRET, ACCESS_TOKEN, ACCESS_SECRET)
+api = tweepy.API(auth)
 
-# Constants
-REDIRECT_URI = "https://image-proceapp.streamlit.app"
+# Predefined sizes
+IMAGE_SIZES = {
+    "300x250": (300, 250),
+    "728x90": (728, 90),
+    "160x600": (160, 600),
+    "300x600": (300, 600),
+}
 
-# Function to generate a random code verifier
-def generate_code_verifier(length=128):
-    return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
+# Streamlit UI
+st.title("Image Resizer & X (Twitter) Auto Post")
 
-# Function to create a code challenge from the verifier
-def create_code_challenge(code_verifier):
-    # Generate SHA-256 hash of the code verifier
-    code_verifier_bytes = code_verifier.encode('utf-8')
-    code_challenge = hashlib.sha256(code_verifier_bytes).digest()
-    # Base64 URL-encode the hash
-    code_challenge_b64 = base64.urlsafe_b64encode(code_challenge).decode('utf-8')
-    return code_challenge_b64.rstrip('=')  # Remove padding
+uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
 
-# Initialize session state for code verifier
-if 'code_verifier' not in st.session_state:
-    st.session_state.code_verifier = generate_code_verifier()
+if uploaded_file:
+    img = Image.open(uploaded_file)
+    st.image(img, caption="Original Image", use_column_width=True)
 
-# Create code challenge
-code_challenge = create_code_challenge(st.session_state.code_verifier)
-
-def exchange_code_for_token(code):
-    """Exchange authorization code for access token"""
-    token_url = "https://api.twitter.com/2/oauth2/token"
+    resized_images = []
     
-    # Create the authorization header
-    auth_header = base64.b64encode(f"{CLIENT_ID}:{CLIENT_SECRET}".encode('utf-8')).decode('utf-8')
-    
-    headers = {
-        "Authorization": f"Basic {auth_header}",
-        "Content-Type": "application/x-www-form-urlencoded"
-    }
-    
-    data = {
-        "code": code,
-        "grant_type": "authorization_code",
-        "redirect_uri": REDIRECT_URI,
-        "code_verifier": st.session_state.code_verifier
-    }
-    
-    response = requests.post(token_url, headers=headers, data=data)
-    
-    if response.status_code == 200:
-        return response.json()
-    else:
-        raise Exception(f"Token exchange failed: {response.text}")
+    # Resize images
+    for size_name, dimensions in IMAGE_SIZES.items():
+        resized_img = img.resize(dimensions)
+        resized_images.append((size_name, resized_img))
 
-def init_oauth_handler():
-    """Initialize the OAuth handler"""
-    oauth2_user_handler = tweepy.OAuth2UserHandler(
-        client_id=CLIENT_ID,
-        client_secret=CLIENT_SECRET,
-        redirect_uri=REDIRECT_URI,
-        scope=["tweet.read", "tweet.write", "users.read", "offline.access"],
-    )
-    return oauth2_user_handler
+    # Display resized images
+    st.subheader("Resized Images")
+    for name, img in resized_images:
+        st.image(img, caption=f"{name} Image", use_column_width=True)
 
-# Main UI
-st.title("🖼️ Image Processor")
-
-# Initialize session state
-if 'oauth_state' not in st.session_state:
-    st.session_state.oauth_state = str(uuid.uuid4())
-
-# Handle OAuth flow
-params = st.experimental_get_query_params()
-if "code" in params:
-    try:
-        # Get the authorization code
-        code = params["code"][0]
-        
-        # Exchange code for token
+    if st.button("Post to X (Twitter)"):
         try:
-            access_token_data = exchange_code_for_token(code)
-            
-            # Store the token
-            st.session_state.oauth_token = access_token_data["access_token"]
-            st.success("Successfully authenticated with Twitter!")
-            
-            # Clear URL parameters
-            st.experimental_set_query_params()
-            st.rerun()
-        except Exception as e:
-            st.error(f"Error exchanging code for token: {str(e)}")
-            
-    except Exception as e:
-        st.error(f"Error in OAuth flow: {str(e)}")
-        if "insecure_transport" in str(e).lower():
-            st.error("This app requires HTTPS. Please make sure you're using the HTTPS URL.")
-
-# Show authentication status and button
-if 'oauth_token' not in st.session_state:
-    st.warning("Please authenticate with Twitter first")
-    
-    # Create auth URL when button is clicked
-    if st.button("Authenticate with Twitter"):
-        try:
-            oauth2_user_handler = init_oauth_handler()
-            auth_url = oauth2_user_handler.get_authorization_url(code_challenge=code_challenge)
-            st.markdown(f"[Click here to authenticate with Twitter]({auth_url})")
-        except Exception as e:
-            st.error(f"Error generating authentication URL: {str(e)}")
-else:
-    st.success("Authenticated with Twitter")
-
-# Predefined image sizes
-IMAGE_SIZES = [
-    (300, 250),
-    (728, 90),
-    (160, 600),
-    (300, 600)
-]
-
-def resize_image(image, size):
-    """Resize image while maintaining aspect ratio and adding white background"""
-    target_width, target_height = size
-    # Create new white background image
-    new_image = Image.new('RGB', (target_width, target_height), 'white')
-    
-    # Calculate scaling factor
-    width_ratio = target_width / image.width
-    height_ratio = target_height / image.height
-    scale_factor = min(width_ratio, height_ratio)
-    
-    # Calculate new size
-    new_width = int(image.width * scale_factor)
-    new_height = int(image.height * scale_factor)
-    
-    # Resize image
-    resized = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
-    
-    # Calculate position to paste (center)
-    x = (target_width - new_width) // 2
-    y = (target_height - new_height) // 2
-    
-    # Paste resized image onto white background
-    new_image.paste(resized, (x, y))
-    return new_image
-
-def post_to_twitter(images):
-    """Post images to Twitter"""
-    try:
-        if 'oauth_token' not in st.session_state:
-            st.error("Please authenticate with Twitter first")
-            return False
-
-        # Get the client
-        client = tweepy.Client(
-            st.session_state.oauth_token,
-            client_id=CLIENT_ID,
-            client_secret=CLIENT_SECRET
-        )
-
-        # Initialize API v1.1 for media upload
-        auth = tweepy.OAuth2AppHandler(CLIENT_ID, CLIENT_SECRET)
-        api = tweepy.API(auth)
-        
-        # Upload images
-        media_ids = []
-        for img in images:
-            # Convert PIL Image to bytes
-            img_byte_arr = io.BytesIO()
-            img.save(img_byte_arr, format='PNG')
-            img_byte_arr = img_byte_arr.getvalue()
-            
-            try:
-                # Upload to Twitter
-                media = api.media_upload(filename='image.png', file=io.BytesIO(img_byte_arr))
+            media_ids = []
+            for name, img in resized_images:
+                img_io = BytesIO()
+                img.save(img_io, format="PNG")
+                img_io.seek(0)
+                media = api.media_upload(filename=f"{name}.png", file=img_io)
                 media_ids.append(media.media_id)
-            except Exception as e:
-                st.error(f"Error uploading image: {str(e)}")
-                return False
-        
-        try:
-            # Post tweet with all images
-            response = client.create_tweet(
-                text='Check out these automatically resized images! #ImageProcessor',
-                media_ids=media_ids
-            )
-            st.write("Tweet posted successfully! Tweet ID:", response.data['id'])
-            return True
-        except Exception as e:
-            st.error(f"Error creating tweet: {str(e)}")
-            return False
             
-    except Exception as e:
-        st.error(f"""
-        Error posting to Twitter: {str(e)}
-        
-        Common issues:
-        1. Authentication token may have expired
-        2. Twitter account may not be approved for API access
-        3. Rate limits may have been exceeded
-        
-        Please try authenticating again.
-        """)
-        return False
-
-st.write("Upload an image to automatically resize it and post to Twitter!")
-
-# File uploader
-uploaded_file = st.file_uploader("Choose an image file", type=['png', 'jpg', 'jpeg'])
-
-if uploaded_file is not None:
-    # Display original image
-    original_image = Image.open(uploaded_file)
-    st.subheader("Original Image")
-    st.image(original_image, use_column_width=True)
-    
-    # Process image
-    processed_images = []
-    st.subheader("Processed Images")
-    
-    # Create columns for processed images
-    cols = st.columns(2)
-    
-    for idx, size in enumerate(IMAGE_SIZES):
-        processed_image = resize_image(original_image, size)
-        processed_images.append(processed_image)
-        
-        # Display in appropriate column
-        with cols[idx % 2]:
-            st.write(f"Size: {size[0]}x{size[1]}")
-            st.image(processed_image)
-    
-    # Post to Twitter button
-    if st.button("Post to Twitter"):
-        if 'oauth_token' in st.session_state:
-            with st.spinner("Posting to Twitter..."):
-                if post_to_twitter(processed_images):
-                    st.success("Successfully posted to Twitter!")
-                else:
-                    st.error("Failed to post to Twitter. Please check the error messages above.")
-        else:
-            st.error("Please authenticate with Twitter first")
+            api.update_status(status="Here are my resized images!", media_ids=media_ids)
+            st.success("Images posted successfully to your X (Twitter) account!")
+        except Exception as e:
+            st.error(f"Failed to post images: {e}")
