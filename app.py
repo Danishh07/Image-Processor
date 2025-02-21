@@ -17,7 +17,7 @@ CLIENT_SECRET = "o5m97vDzMiAjqCqByvChBYvKNM3h4wBl5lanfdnIdyhZBhc6Lm"
 oauth2_user_handler = tweepy.OAuth2UserHandler(
     client_id=CLIENT_ID,
     client_secret=CLIENT_SECRET,
-    redirect_uri="http://localhost:8501",
+    redirect_uri="https://image-proceapp.streamlit.app",
     scope=["tweet.read", "tweet.write", "users.read", "offline.access"],
 )
 
