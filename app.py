@@ -11,19 +11,22 @@ st.write("Available secrets:", list(st.secrets.keys()) if hasattr(st.secrets, "k
 
 # Try to get Twitter API credentials from Streamlit secrets
 try:
-    TWITTER_API_KEY = st.secrets["TWITTER_API_KEY"]
-    TWITTER_API_SECRET = st.secrets["TWITTER_API_SECRET"]
-    TWITTER_ACCESS_TOKEN = st.secrets["TWITTER_ACCESS_TOKEN"]
-    TWITTER_ACCESS_SECRET = st.secrets["TWITTER_ACCESS_SECRET"]
+    TWITTER_API_KEY = st.secrets.secrets.TWITTER_API_KEY
+    TWITTER_API_SECRET = st.secrets.secrets.TWITTER_API_SECRET
+    TWITTER_ACCESS_TOKEN = st.secrets.secrets.TWITTER_ACCESS_TOKEN
+    TWITTER_ACCESS_SECRET = st.secrets.secrets.TWITTER_ACCESS_SECRET
     twitter_configured = True
+    st.success("Twitter credentials loaded successfully!")
 except Exception as e:
     st.error("""
     Twitter API credentials not found in secrets. 
     Please make sure you've configured the following secrets in your Streamlit Cloud dashboard:
-    - TWITTER_API_KEY
-    - TWITTER_API_SECRET
-    - TWITTER_ACCESS_TOKEN
-    - TWITTER_ACCESS_SECRET
+    
+    [secrets]
+    TWITTER_API_KEY = "your_api_key"
+    TWITTER_API_SECRET = "your_api_secret"
+    TWITTER_ACCESS_TOKEN = "your_access_token"
+    TWITTER_ACCESS_SECRET = "your_access_secret"
     
     Error details: {}
     """.format(str(e)))
