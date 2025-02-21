@@ -10,24 +10,33 @@ st.set_page_config(page_title="Image Processor", page_icon="🖼️", layout="wi
 # Force HTTPS for OAuth
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '0'
 
-# Debug information about secrets
-st.write("Available secrets:", list(st.secrets.keys()) if hasattr(st.secrets, "keys") else "No secrets available")
-
-# Twitter API credentials
-CLIENT_ID = "eW1BcGF0dEJTeHAwQnM3dFlGUEU6MTpjaQ"
-CLIENT_SECRET = "o5m97vDzMiAjqCqByvChBYvKNM3h4wBl5lanfdnIdyhZBhc6Lm"
+# Twitter API credentials - try to get from secrets, otherwise use environment variables
+try:
+    # Try to get from nested secrets first
+    CLIENT_ID = st.secrets.secrets.TWITTER_CLIENT_ID
+    CLIENT_SECRET = st.secrets.secrets.TWITTER_CLIENT_SECRET
+except Exception:
+    try:
+        # Try to get from top-level secrets
+        CLIENT_ID = st.secrets["TWITTER_CLIENT_ID"]
+        CLIENT_SECRET = st.secrets["TWITTER_CLIENT_SECRET"]
+    except Exception:
+        # Use hardcoded values as fallback
+        CLIENT_ID = "eW1BcGF0dEJTeHAwQnM3dFlGUEU6MTpjaQ"
+        CLIENT_SECRET = "o5m97vDzMiAjqCqByvChBYvKNM3h4wBl5lanfdnIdyhZBhc6Lm"
 
 # Initialize Twitter client
 try:
     oauth2_user_handler = tweepy.OAuth2UserHandler(
         client_id=CLIENT_ID,
         client_secret=CLIENT_SECRET,
-        redirect_uri="https://image-proceapp.streamlit.app/",  # Added trailing slash
+        redirect_uri="https://image-proceapp.streamlit.app/",
         scope=["tweet.read", "tweet.write", "users.read", "offline.access"],
     )
 
     # Get the authorization URL
     auth_url = oauth2_user_handler.get_authorization_url()
+    st.session_state['auth_url'] = auth_url
 except Exception as e:
     st.error(f"Error initializing OAuth: {str(e)}")
     auth_url = None
@@ -71,8 +80,8 @@ def post_to_twitter(images):
     try:
         if 'oauth_token' not in st.session_state:
             st.error("Please authenticate with Twitter first")
-            if auth_url:
-                st.markdown(f"[Click here to authenticate with Twitter]({auth_url})")
+            if 'auth_url' in st.session_state:
+                st.markdown(f"[Click here to authenticate with Twitter]({st.session_state.auth_url})")
             return False
 
         # Get the client
@@ -149,8 +158,8 @@ if "code" in st.experimental_get_query_params():
 # Show authentication status
 if 'oauth_token' not in st.session_state:
     st.warning("Please authenticate with Twitter first")
-    if auth_url:
-        st.markdown(f"[Click here to authenticate with Twitter]({auth_url})")
+    if 'auth_url' in st.session_state:
+        st.markdown(f"[Click here to authenticate with Twitter]({st.session_state.auth_url})")
 else:
     st.success("Authenticated with Twitter")
 
