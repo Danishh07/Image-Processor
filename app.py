@@ -30,23 +30,24 @@ except Exception:
         CLIENT_SECRET = "o5m97vDzMiAjqCqByvChBYvKNM3h4wBl5lanfdnIdyhZBhc6Lm"
 
 # Initialize Twitter client
-try:
-    oauth2_user_handler = tweepy.OAuth2UserHandler(
-        client_id=CLIENT_ID,
-        client_secret=CLIENT_SECRET,
-        redirect_uri="https://image-proceapp.streamlit.app/",
-        scope=["tweet.read", "tweet.write", "users.read", "offline.access"],
-    )
-    
-    # Get the authorization URL
-    auth_url = oauth2_user_handler.get_authorization_url()
-    
-    # Store the state from oauth2_user_handler
-    st.session_state.oauth_state = oauth2_user_handler.state
-    st.session_state.auth_url = auth_url
-except Exception as e:
-    st.error(f"Error initializing OAuth: {str(e)}")
-    auth_url = None
+if 'oauth2_user_handler' not in st.session_state:
+    try:
+        oauth2_user_handler = tweepy.OAuth2UserHandler(
+            client_id=CLIENT_ID,
+            client_secret=CLIENT_SECRET,
+            redirect_uri="https://image-proceapp.streamlit.app/",
+            scope=["tweet.read", "tweet.write", "users.read", "offline.access"],
+        )
+        
+        # Store the handler in session state
+        st.session_state.oauth2_user_handler = oauth2_user_handler
+        
+        # Get the authorization URL
+        auth_url = oauth2_user_handler.get_authorization_url()
+        st.session_state.auth_url = auth_url
+    except Exception as e:
+        st.error(f"Error initializing OAuth: {str(e)}")
+        auth_url = None
 
 # Predefined image sizes
 IMAGE_SIZES = [
@@ -152,26 +153,22 @@ if "code" in params and "state" in params:
     code = params["code"][0]
     state = params["state"][0]
     
-    # Verify state
-    if state != st.session_state.get('oauth_state'):
-        st.error("Invalid state parameter. Please try authenticating again.")
-        # Clear the session state to force a new authentication
-        for key in ['oauth_state', 'oauth_token', 'auth_url']:
+    try:
+        # Get access token using the stored handler
+        access_token = st.session_state.oauth2_user_handler.fetch_token(code)
+        st.session_state.oauth_token = access_token
+        st.success("Successfully authenticated with Twitter!")
+        
+        # Clear the URL parameters
+        st.experimental_set_query_params()
+    except Exception as e:
+        st.error(f"Error authenticating: {str(e)}")
+        if "insecure_transport" in str(e).lower():
+            st.error("This app requires HTTPS. Please make sure you're using the HTTPS URL.")
+        # Clear session state to force re-authentication
+        for key in ['oauth2_user_handler', 'oauth_token', 'auth_url']:
             if key in st.session_state:
                 del st.session_state[key]
-    else:
-        try:
-            # Get access token
-            access_token = oauth2_user_handler.fetch_token(code)
-            st.session_state.oauth_token = access_token
-            st.success("Successfully authenticated with Twitter!")
-            
-            # Clear the URL parameters
-            st.experimental_set_query_params()
-        except Exception as e:
-            st.error(f"Error authenticating: {str(e)}")
-            if "insecure_transport" in str(e).lower():
-                st.error("This app requires HTTPS. Please make sure you're using the HTTPS URL.")
 
 # Show authentication status
 if 'oauth_token' not in st.session_state:
