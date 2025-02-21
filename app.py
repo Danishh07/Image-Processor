@@ -65,35 +65,27 @@ st.write("Debug - Query Parameters:", params)
 st.write("Debug - Current State:", st.session_state.oauth_state)
 
 # Handle OAuth flow
-if "state" in params and "code" in params:
-    received_state = params["state"][0]
-    code = params["code"][0]
-    
-    st.write("Debug - Received State:", received_state)
-    st.write("Debug - Expected State:", st.session_state.oauth_state)
-    st.write("Debug - Code:", code)
-    
-    if received_state == st.session_state.oauth_state:
-        try:
-            # Create a new handler and get the token
-            oauth2_user_handler = init_oauth_handler()
-            access_token = oauth2_user_handler.fetch_token(code)
-            
-            # Store the token
-            st.session_state.oauth_token = access_token
-            st.success("Successfully authenticated with Twitter!")
-            
-            # Clear URL parameters and generate new state
-            st.experimental_set_query_params()
-            st.session_state.oauth_state = str(uuid.uuid4())
-            st.rerun()
-        except Exception as e:
-            st.error(f"Error authenticating: {str(e)}")
-            if "insecure_transport" in str(e).lower():
-                st.error("This app requires HTTPS. Please make sure you're using the HTTPS URL.")
-    else:
-        st.error("State mismatch. Please try authenticating again.")
-        st.session_state.oauth_state = str(uuid.uuid4())
+if "code" in params:
+    try:
+        # Get the authorization code
+        code = params["code"][0]
+        st.write("Debug - Code:", code)
+        
+        # Create a new handler and get the token
+        oauth2_user_handler = init_oauth_handler()
+        access_token = oauth2_user_handler.fetch_token(code)
+        
+        # Store the token
+        st.session_state.oauth_token = access_token
+        st.success("Successfully authenticated with Twitter!")
+        
+        # Clear URL parameters
+        st.experimental_set_query_params()
+        st.rerun()
+    except Exception as e:
+        st.error(f"Error authenticating: {str(e)}")
+        if "insecure_transport" in str(e).lower():
+            st.error("This app requires HTTPS. Please make sure you're using the HTTPS URL.")
 
 # Show authentication status and button
 if 'oauth_token' not in st.session_state:
@@ -103,7 +95,7 @@ if 'oauth_token' not in st.session_state:
     if st.button("Authenticate with Twitter"):
         try:
             oauth2_user_handler = init_oauth_handler()
-            auth_url = oauth2_user_handler.get_authorization_url(state=st.session_state.oauth_state)
+            auth_url = oauth2_user_handler.get_authorization_url()
             st.write("Debug - Generated Auth URL:", auth_url)
             st.markdown(f"[Click here to authenticate with Twitter]({auth_url})")
         except Exception as e:
