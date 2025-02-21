@@ -9,28 +9,20 @@ st.set_page_config(page_title="Image Processor", page_icon="🖼️", layout="wi
 # Debug information about secrets
 st.write("Available secrets:", list(st.secrets.keys()) if hasattr(st.secrets, "keys") else "No secrets available")
 
-# Try to get Twitter API credentials from Streamlit secrets
-try:
-    TWITTER_API_KEY = st.secrets.secrets.TWITTER_API_KEY
-    TWITTER_API_SECRET = st.secrets.secrets.TWITTER_API_SECRET
-    TWITTER_ACCESS_TOKEN = st.secrets.secrets.TWITTER_ACCESS_TOKEN
-    TWITTER_ACCESS_SECRET = st.secrets.secrets.TWITTER_ACCESS_SECRET
-    twitter_configured = True
-    st.success("Twitter credentials loaded successfully!")
-except Exception as e:
-    st.error("""
-    Twitter API credentials not found in secrets. 
-    Please make sure you've configured the following secrets in your Streamlit Cloud dashboard:
-    
-    [secrets]
-    TWITTER_API_KEY = "your_api_key"
-    TWITTER_API_SECRET = "your_api_secret"
-    TWITTER_ACCESS_TOKEN = "your_access_token"
-    TWITTER_ACCESS_SECRET = "your_access_secret"
-    
-    Error details: {}
-    """.format(str(e)))
-    twitter_configured = False
+# Twitter API credentials
+CLIENT_ID = "eW1BcGF0dEJTeHAwQnM3dFlGUEU6MTpjaQ"
+CLIENT_SECRET = "o5m97vDzMiAjqCqByvChBYvKNM3h4wBl5lanfdnIdyhZBhc6Lm"
+
+# Initialize Twitter client
+oauth2_user_handler = tweepy.OAuth2UserHandler(
+    client_id=CLIENT_ID,
+    client_secret=CLIENT_SECRET,
+    redirect_uri="http://localhost:8501",
+    scope=["tweet.read", "tweet.write", "users.read", "offline.access"],
+)
+
+# Get the authorization URL
+auth_url = oauth2_user_handler.get_authorization_url()
 
 # Predefined image sizes
 IMAGE_SIZES = [
@@ -68,26 +60,21 @@ def resize_image(image, size):
 
 def post_to_twitter(images):
     """Post images to Twitter"""
-    if not twitter_configured:
-        st.error("Twitter API is not configured. Please check the secrets configuration.")
-        return False
-
     try:
-        # Initialize Twitter API v2 client
+        if 'oauth_token' not in st.session_state:
+            st.error("Please authenticate with Twitter first")
+            st.markdown(f"[Click here to authenticate with Twitter]({auth_url})")
+            return False
+
+        # Get the client
         client = tweepy.Client(
-            consumer_key=TWITTER_API_KEY,
-            consumer_secret=TWITTER_API_SECRET,
-            access_token=TWITTER_ACCESS_TOKEN,
-            access_token_secret=TWITTER_ACCESS_SECRET
+            st.session_state.oauth_token,
+            client_id=CLIENT_ID,
+            client_secret=CLIENT_SECRET
         )
-        
+
         # Initialize API v1.1 for media upload
-        auth = tweepy.OAuth1UserHandler(
-            TWITTER_API_KEY,
-            TWITTER_API_SECRET,
-            TWITTER_ACCESS_TOKEN,
-            TWITTER_ACCESS_SECRET
-        )
+        auth = tweepy.OAuth2AppHandler(CLIENT_ID, CLIENT_SECRET)
         api = tweepy.API(auth)
         
         # Upload images
@@ -107,7 +94,7 @@ def post_to_twitter(images):
                 return False
         
         try:
-            # Post tweet with all images using v2 API
+            # Post tweet with all images
             response = client.create_tweet(
                 text='Check out these automatically resized images! #ImageProcessor',
                 media_ids=media_ids
@@ -123,16 +110,35 @@ def post_to_twitter(images):
         Error posting to Twitter: {str(e)}
         
         Common issues:
-        1. API keys may be incorrect
+        1. Authentication token may have expired
         2. Twitter account may not be approved for API access
         3. Rate limits may have been exceeded
         
-        Please verify your Twitter API credentials and permissions.
+        Please try authenticating again.
         """)
         return False
 
 # Main UI
 st.title("🖼️ Image Processor")
+
+# Check for OAuth callback
+if "code" in st.experimental_get_query_params():
+    code = st.experimental_get_query_params()["code"][0]
+    try:
+        # Get access token
+        access_token = oauth2_user_handler.fetch_token(code)
+        st.session_state.oauth_token = access_token
+        st.success("Successfully authenticated with Twitter!")
+    except Exception as e:
+        st.error(f"Error authenticating: {str(e)}")
+
+# Show authentication status
+if 'oauth_token' not in st.session_state:
+    st.warning("Please authenticate with Twitter first")
+    st.markdown(f"[Click here to authenticate with Twitter]({auth_url})")
+else:
+    st.success("Authenticated with Twitter")
+
 st.write("Upload an image to automatically resize it and post to Twitter!")
 
 # File uploader
@@ -162,11 +168,11 @@ if uploaded_file is not None:
     
     # Post to Twitter button
     if st.button("Post to Twitter"):
-        if twitter_configured:
+        if 'oauth_token' in st.session_state:
             with st.spinner("Posting to Twitter..."):
                 if post_to_twitter(processed_images):
                     st.success("Successfully posted to Twitter!")
                 else:
                     st.error("Failed to post to Twitter. Please check the error messages above.")
         else:
-            st.error("Twitter API is not configured. Please check the secrets configuration.")
+            st.error("Please authenticate with Twitter first")
