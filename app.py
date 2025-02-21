@@ -1,20 +1,33 @@
 import streamlit as st
 from PIL import Image
 import io
-import os
 import tweepy
-
-# Load environment variables
-# load_dotenv()
 
 # Configure page
 st.set_page_config(page_title="Image Processor", page_icon="🖼️", layout="wide")
 
-# Twitter API credentials from Streamlit secrets
-TWITTER_API_KEY = st.secrets["TWITTER_API_KEY"]
-TWITTER_API_SECRET = st.secrets["TWITTER_API_SECRET"]
-TWITTER_ACCESS_TOKEN = st.secrets["TWITTER_ACCESS_TOKEN"]
-TWITTER_ACCESS_SECRET = st.secrets["TWITTER_ACCESS_SECRET"]
+# Debug information about secrets
+st.write("Available secrets:", list(st.secrets.keys()) if hasattr(st.secrets, "keys") else "No secrets available")
+
+# Try to get Twitter API credentials from Streamlit secrets
+try:
+    TWITTER_API_KEY = st.secrets["TWITTER_API_KEY"]
+    TWITTER_API_SECRET = st.secrets["TWITTER_API_SECRET"]
+    TWITTER_ACCESS_TOKEN = st.secrets["TWITTER_ACCESS_TOKEN"]
+    TWITTER_ACCESS_SECRET = st.secrets["TWITTER_ACCESS_SECRET"]
+    twitter_configured = True
+except Exception as e:
+    st.error("""
+    Twitter API credentials not found in secrets. 
+    Please make sure you've configured the following secrets in your Streamlit Cloud dashboard:
+    - TWITTER_API_KEY
+    - TWITTER_API_SECRET
+    - TWITTER_ACCESS_TOKEN
+    - TWITTER_ACCESS_SECRET
+    
+    Error details: {}
+    """.format(str(e)))
+    twitter_configured = False
 
 # Predefined image sizes
 IMAGE_SIZES = [
@@ -52,6 +65,10 @@ def resize_image(image, size):
 
 def post_to_twitter(images):
     """Post images to Twitter"""
+    if not twitter_configured:
+        st.error("Twitter API is not configured. Please check the secrets configuration.")
+        return False
+
     try:
         # Authenticate with Twitter
         auth = tweepy.OAuthHandler(TWITTER_API_KEY, TWITTER_API_SECRET)
@@ -111,8 +128,11 @@ if uploaded_file is not None:
     
     # Post to Twitter button
     if st.button("Post to Twitter"):
-        with st.spinner("Posting to Twitter..."):
-            if post_to_twitter(processed_images):
-                st.success("Successfully posted to Twitter!")
-            else:
-                st.error("Failed to post to Twitter. Please check your credentials.")
+        if twitter_configured:
+            with st.spinner("Posting to Twitter..."):
+                if post_to_twitter(processed_images):
+                    st.success("Successfully posted to Twitter!")
+                else:
+                    st.error("Failed to post to Twitter. Please check your credentials.")
+        else:
+            st.error("Twitter API is not configured. Please check the secrets configuration.")
