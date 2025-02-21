@@ -3,6 +3,7 @@ from PIL import Image
 import io
 import tweepy
 import os
+import time
 
 # Configure page
 st.set_page_config(page_title="Image Processor", page_icon="🖼️", layout="wide")
@@ -34,9 +35,13 @@ try:
         scope=["tweet.read", "tweet.write", "users.read", "offline.access"],
     )
 
-    # Get the authorization URL
-    auth_url = oauth2_user_handler.get_authorization_url()
-    st.session_state['auth_url'] = auth_url
+    # Generate and store state
+    if 'oauth_state' not in st.session_state:
+        st.session_state.oauth_state = f"st_state_{int(time.time())}"
+    
+    # Get the authorization URL with state
+    auth_url = oauth2_user_handler.get_authorization_url(state=st.session_state.oauth_state)
+    st.session_state.auth_url = auth_url
 except Exception as e:
     st.error(f"Error initializing OAuth: {str(e)}")
     auth_url = None
@@ -140,20 +145,31 @@ def post_to_twitter(images):
 st.title("🖼️ Image Processor")
 
 # Check for OAuth callback
-if "code" in st.experimental_get_query_params():
-    code = st.experimental_get_query_params()["code"][0]
-    try:
-        # Get access token
-        access_token = oauth2_user_handler.fetch_token(code)
-        st.session_state.oauth_token = access_token
-        st.success("Successfully authenticated with Twitter!")
-        
-        # Clear the URL parameters
-        st.experimental_set_query_params()
-    except Exception as e:
-        st.error(f"Error authenticating: {str(e)}")
-        if "insecure_transport" in str(e).lower():
-            st.error("This app requires HTTPS. Please make sure you're using the HTTPS URL.")
+params = st.experimental_get_query_params()
+if "code" in params and "state" in params:
+    code = params["code"][0]
+    state = params["state"][0]
+    
+    # Verify state
+    if state != st.session_state.get('oauth_state'):
+        st.error("Invalid state parameter. Please try authenticating again.")
+        # Clear the session state to force a new authentication
+        for key in ['oauth_state', 'oauth_token', 'auth_url']:
+            if key in st.session_state:
+                del st.session_state[key]
+    else:
+        try:
+            # Get access token
+            access_token = oauth2_user_handler.fetch_token(code)
+            st.session_state.oauth_token = access_token
+            st.success("Successfully authenticated with Twitter!")
+            
+            # Clear the URL parameters
+            st.experimental_set_query_params()
+        except Exception as e:
+            st.error(f"Error authenticating: {str(e)}")
+            if "insecure_transport" in str(e).lower():
+                st.error("This app requires HTTPS. Please make sure you're using the HTTPS URL.")
 
 # Show authentication status
 if 'oauth_token' not in st.session_state:
