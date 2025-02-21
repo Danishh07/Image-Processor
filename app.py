@@ -3,19 +3,18 @@ from PIL import Image
 import io
 import os
 import tweepy
-from dotenv import load_dotenv
 
 # Load environment variables
-load_dotenv()
+# load_dotenv()
 
 # Configure page
 st.set_page_config(page_title="Image Processor", page_icon="🖼️", layout="wide")
 
-# Twitter API credentials
-TWITTER_API_KEY = os.getenv('TWITTER_API_KEY')
-TWITTER_API_SECRET = os.getenv('TWITTER_API_SECRET')
-TWITTER_ACCESS_TOKEN = os.getenv('TWITTER_ACCESS_TOKEN')
-TWITTER_ACCESS_SECRET = os.getenv('TWITTER_ACCESS_SECRET')
+# Twitter API credentials from Streamlit secrets
+TWITTER_API_KEY = st.secrets["TWITTER_API_KEY"]
+TWITTER_API_SECRET = st.secrets["TWITTER_API_SECRET"]
+TWITTER_ACCESS_TOKEN = st.secrets["TWITTER_ACCESS_TOKEN"]
+TWITTER_ACCESS_SECRET = st.secrets["TWITTER_ACCESS_SECRET"]
 
 # Predefined image sizes
 IMAGE_SIZES = [
