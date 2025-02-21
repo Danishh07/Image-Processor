@@ -73,7 +73,19 @@ if "code" in params:
         
         # Create a new handler and get the token
         oauth2_user_handler = init_oauth_handler()
-        access_token = oauth2_user_handler.fetch_token(code)
+        
+        try:
+            # First try with the code as is
+            access_token = oauth2_user_handler.fetch_token(code)
+        except Exception as e1:
+            st.write("Debug - First attempt failed:", str(e1))
+            try:
+                # Try with URL-decoded code
+                decoded_code = urllib.parse.unquote(code)
+                access_token = oauth2_user_handler.fetch_token(decoded_code)
+            except Exception as e2:
+                st.write("Debug - Second attempt failed:", str(e2))
+                raise e2
         
         # Store the token
         st.session_state.oauth_token = access_token
@@ -86,6 +98,11 @@ if "code" in params:
         st.error(f"Error authenticating: {str(e)}")
         if "insecure_transport" in str(e).lower():
             st.error("This app requires HTTPS. Please make sure you're using the HTTPS URL.")
+            
+        # Show detailed error for debugging
+        st.write("Debug - Full error:", str(e))
+        if hasattr(e, 'response'):
+            st.write("Debug - Response:", e.response.text if hasattr(e.response, 'text') else str(e.response))
 
 # Show authentication status and button
 if 'oauth_token' not in st.session_state:
